@@ -9,7 +9,7 @@ export type JsonType =
   | 'array'
   | 'object'
 
-export interface Item {
+export type Item = {
   key?: string
   path: string[]
   node: Json

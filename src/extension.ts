@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client/extension'
 import { debug } from './debugger'
-import { analyseDMMF } from './dmmf'
+import { analyseSchemaFile, resolveSchemaPath } from './ast'
 import { configureKeys, decryptOnRead, encryptOnWrite } from './encryption'
 import type { Configuration, MiddlewareParams } from './types'
 
@@ -10,9 +10,11 @@ export function fieldEncryptionExtension<
 >(config: Configuration = {}) {
   const keys = configureKeys(config)
   debug.setup('Keys: %O', keys)
-  const models = analyseDMMF(
-    config.dmmf ?? require('@prisma/client').Prisma.dmmf
-  )
+  
+  const schemaPath = resolveSchemaPath(config.schemaPath)
+  debug.setup('Schema path: %s', schemaPath)
+
+  const models = analyseSchemaFile(schemaPath)
   debug.setup('Models: %O', models)
 
   return Prisma.defineExtension({

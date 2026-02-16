@@ -1,0 +1,7 @@
+model User {
+  id        Int     @id @default(autoincrement())
+  email     String  @unique
+  name      String? @unique /// @encrypted
+  nameHash  String? @unique /// @encryption:hash(name)?normalize=lowercase&normalize=trim
+  posts     Post[]
+}

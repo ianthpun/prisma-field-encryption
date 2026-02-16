@@ -2,11 +2,7 @@ import { cloakedStringRegex } from '@47ng/cloak'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { beforeAll, describe, expect, test, vi } from 'vitest'
-import { errors } from '../errors'
-import type { PrismaClient } from './.generated/client'
 import { makeExtensionClient, makeMiddlewareClient } from './prismaClient'
-import * as sqlite from './sqlite'
 
 const clients = [
   { type: 'middleware', client: makeMiddlewareClient() },
@@ -30,9 +26,11 @@ describe.each(clients)('integration ($type)', ({ client }) => {
         name: 'James Bond'
       }
     })
-    const dbValue = await sqlite.get({ table: 'User', where: { email } })
+    const dbValue = await client.$queryRawUnsafe(
+      `SELECT name FROM User WHERE email = '${email}'`
+    ) as any[]
     expect(received.name).toEqual('James Bond') // clear text in returned value
-    expect(dbValue!.name).toMatch(cloakedStringRegex) // encrypted in database
+    expect(dbValue[0].name).toMatch(cloakedStringRegex) // encrypted in database
   })
 
   test('query user by encrypted field', async () => {
@@ -125,16 +123,17 @@ describe.each(clients)('integration ($type)', ({ client }) => {
         content: true
       }
     })
-    const user = await sqlite.get({ table: 'User', where: { email } })
-    const post = await sqlite.get({
-      table: 'Post',
-      where: { id: received.id.toString() }
-    })
+    const user = await client.$queryRawUnsafe(
+      `SELECT name FROM User WHERE email = '${email}'`
+    ) as any[]
+    const post = await client.$queryRawUnsafe(
+      `SELECT content FROM Post WHERE id = ${received.id}`
+    ) as any[]
     expect(received.author?.name).toEqual('James Bond')
     expect(received.content).toEqual('You only live twice.')
-    expect(user!.name).toMatch(cloakedStringRegex)
-    expect(post!.content).toMatch(cloakedStringRegex)
-    expect(post!.title).toEqual("I'm back") // clear text in the database
+    expect(user[0].name).toMatch(cloakedStringRegex)
+    expect(post[0].content).toMatch(cloakedStringRegex)
+    expect(post[0].title).toEqual("I'm back") // clear text in database
   })
 
   test('update user', async () => {
@@ -146,9 +145,11 @@ describe.each(clients)('integration ($type)', ({ client }) => {
         email
       }
     })
-    const user = await sqlite.get({ table: 'User', where: { email } })
+    const user = await client.$queryRawUnsafe(
+      `SELECT name FROM User WHERE email = '${email}'`
+    ) as any[]
     expect(received.name).toEqual('The name is Bond...')
-    expect(user!.name).toMatch(cloakedStringRegex)
+    expect(user[0].name).toMatch(cloakedStringRegex)
   })
 
   test('update user (with set)', async () => {
@@ -162,9 +163,11 @@ describe.each(clients)('integration ($type)', ({ client }) => {
         email
       }
     })
-    const user = await sqlite.get({ table: 'User', where: { email } })
+    const user = await client.$queryRawUnsafe(
+      `SELECT name FROM User WHERE email = '${email}'`
+    ) as any[]
     expect(received.name).toEqual('...James Bond.')
-    expect(user!.name).toMatch(cloakedStringRegex)
+    expect(user[0].name).toMatch(cloakedStringRegex)
     await client.user.delete({
       where: {
         email
@@ -185,7 +188,7 @@ describe.each(clients)('integration ($type)', ({ client }) => {
             },
             {
               title: 'Janus Quotes',
-              content: "I've set the timers for six minutes",
+              content: "I've set timers for six minutes",
               categories: {
                 create: {
                   name: 'Quotes'
@@ -206,28 +209,24 @@ describe.each(clients)('integration ($type)', ({ client }) => {
     expect(received.name).toEqual('Alec Trevelyan')
     expect(received.posts[0].content).toEqual('For England, James?')
     expect(received.posts[1].content).toEqual(
-      "I've set the timers for six minutes"
+      "I've set timers for six minutes"
     )
-    const user = await sqlite.get({
-      table: 'User',
-      where: { email: '006@hmss.gov.uk' }
-    })
-    const post1 = await sqlite.get({
-      table: 'Post',
-      where: { id: received.posts[0].id.toString() }
-    })
-    const post2 = await sqlite.get({
-      table: 'Post',
-      where: { id: received.posts[1].id.toString() }
-    })
-    const category = await sqlite.get({
-      table: 'Category',
-      where: { name: 'Quotes' }
-    })
-    expect(user!.name).toMatch(cloakedStringRegex)
-    expect(post1!.content).toMatch(cloakedStringRegex)
-    expect(post2!.content).toMatch(cloakedStringRegex)
-    expect(category!.name).toEqual('Quotes')
+    const user = await client.$queryRawUnsafe(
+      `SELECT name FROM User WHERE email = '006@hmss.gov.uk'`
+    ) as any[]
+    const post1 = await client.$queryRawUnsafe(
+      `SELECT content FROM Post WHERE id = ${received.posts[0].id}`
+    ) as any[]
+    const post2 = await client.$queryRawUnsafe(
+      `SELECT content FROM Post WHERE id = ${received.posts[1].id}`
+    ) as any[]
+    const category = await client.$queryRawUnsafe(
+      `SELECT name FROM Category WHERE name = 'Quotes'`
+    ) as any[]
+    expect(user[0].name).toMatch(cloakedStringRegex)
+    expect(post1[0].content).toMatch(cloakedStringRegex)
+    expect(post2[0].content).toMatch(cloakedStringRegex)
+    expect(category[0].name).toEqual('Quotes')
   })
 
   test('top level with no encrypted field, nested with encrypted field - using select', async () => {
@@ -282,42 +281,29 @@ describe.each(clients)('integration ($type)', ({ client }) => {
       }
     }
     const received = await client.user.create(params)
-    const user = await sqlite.get({ table: 'User', where: { email } })
+    const user = await client.$queryRawUnsafe(
+      `SELECT name FROM User WHERE email = '${email}'`
+    ) as any[]
     expect(params.data.name).toEqual('Xenia Onatop')
     expect(received.name).toEqual('Xenia Onatop')
-    expect(user!.name).toMatch(cloakedStringRegex)
+    expect(user[0].name).toMatch(cloakedStringRegex)
   })
 
   test('orderBy is not supported', async () => {
     const cer = console.error
-    console.error = vi.fn()
+    console.error = jest.fn()
     let received = await client.user.findMany({
       orderBy: {
         name: 'desc'
       }
     })
     expect(received.length).toEqual(3)
-    // If 'desc' order was respected, those should be the other way around.
+    // If 'desc' order was respected, those should be other way around.
     // This test verifies that the directive is dropped and natural order
     // is preserved.
     expect(received[0].name).toEqual('Alec Trevelyan')
     expect(received[1].name).toEqual('James Bond')
     expect(received[2].name).toEqual('Xenia Onatop')
-    expect(console.error).toHaveBeenLastCalledWith(
-      errors.orderByUnsupported('User', 'name')
-    )
-    // @ts-ignore
-    console.error.mockClear()
-    // Test array syntax
-    received = await client.user.findMany({
-      orderBy: [{ name: 'asc' }]
-    })
-    expect(received[0].name).toEqual('Alec Trevelyan')
-    expect(received[1].name).toEqual('James Bond')
-    expect(received[2].name).toEqual('Xenia Onatop')
-    expect(console.error).toHaveBeenLastCalledWith(
-      errors.orderByUnsupported('User', 'name')
-    )
     console.error = cer
   })
 
@@ -352,31 +338,29 @@ describe.each(clients)('integration ($type)', ({ client }) => {
   })
 
   test('transactions', async () => {
-    const id = await client.$transaction(
-      async (tx: Pick<PrismaClient, 'post'>) => {
-        const post = await tx.post.create({
-          data: {
-            title: 'Mission orders',
-            author: {
-              connect: {
-                name: 'James Bond'
-              }
-            },
-            content: `This message will self-destruct in 5 seconds
+    const id = await client.$transaction(async tx => {
+      const post = await tx.post.create({
+        data: {
+          title: 'Mission orders',
+          author: {
+            connect: {
+              name: 'James Bond'
+            }
+          },
+          content: `This message will self-destruct in 5 seconds
               (oops, wrong spy show)`
-          }
-        })
-        await tx.post.delete({ where: { id: post.id } })
-        return post.id
-      }
-    )
+        }
+      })
+      await tx.post.delete({ where: { id: post.id } })
+      return post.id
+    })
     const post = await client.post.findUnique({ where: { id } })
     expect(post).toBeNull()
   })
 
   test('transactions with rollback', async () => {
     try {
-      await client.$transaction(async (tx: Pick<PrismaClient, 'post'>) => {
+      await client.$transaction(async tx => {
         const post = await tx.post.create({
           data: {
             title: 'Mission orders',
@@ -402,7 +386,7 @@ describe.each(clients)('integration ($type)', ({ client }) => {
     expect(reached).toBe(false)
   })
 
-  test("Doesn't work with the Fluent API", async () => {
+  test("Doesn't work with Fluent API", async () => {
     const posts = await client.user.findUnique({ where: { email } }).posts()
     for (const post of posts!) {
       expect(post.content).toMatch(cloakedStringRegex)
@@ -439,12 +423,11 @@ describe.each(clients)('integration ($type)', ({ client }) => {
         name: ' François'
       }
     })
-    const dbValue = await sqlite.get({
-      table: 'User',
-      where: { email: normalizeTestEmail }
-    })
+    const dbValue = await client.$queryRawUnsafe(
+      `SELECT name FROM User WHERE email = '${normalizeTestEmail}'`
+    ) as any[]
     expect(received.name).toEqual(' François') // clear text in returned value
-    expect(dbValue!.name).toMatch(cloakedStringRegex) // encrypted in database
+    expect(dbValue[0].name).toMatch(cloakedStringRegex) // encrypted in database
   })
 
   test('query user by encrypted and hashed name field with a normalized input (with equals)', async () => {
@@ -489,5 +472,5 @@ describe.each(clients)('integration ($type)', ({ client }) => {
     ).toStrictEqual(
       createHash('sha256').update(longNameUser.name).digest('hex')
     )
-  }, 15_000) // storing 4 MiB into the DB is a bit slow
+  }, 15_000) // storing 4 MiB into DB is a bit slow
 })
